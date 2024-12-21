@@ -10,6 +10,7 @@ import 'hardhat-contract-sizer'
 import '@nomiclabs/hardhat-ethers'
 import '@layerzerolabs/toolbox-hardhat'
 import { HardhatUserConfig, HttpNetworkAccountsUserConfig } from 'hardhat/types'
+import '@nomicfoundation/hardhat-verify'
 
 import { EndpointId } from '@layerzerolabs/lz-definitions'
 
@@ -34,6 +35,8 @@ if (accounts == null) {
     )
 }
 
+const { ETHERSCAN_KEY, BASESCAN_KEY, ARBISCAN_KEY, INFURA_API_KEY } = process.env
+
 const config: HardhatUserConfig = {
     paths: {
         cache: 'cache/hardhat',
@@ -52,20 +55,20 @@ const config: HardhatUserConfig = {
         ],
     },
     networks: {
-        'sepolia-testnet': {
-            eid: EndpointId.SEPOLIA_V2_TESTNET,
-            url: process.env.RPC_URL_SEPOLIA || 'https://rpc.sepolia.org/',
-            accounts,
+        sepolia: {
+            url: `https://sepolia.infura.io/v3/${INFURA_API_KEY}`,
+            chainId: 11155111,
+            accounts: [`${PRIVATE_KEY}`],
         },
-        'avalanche-testnet': {
-            eid: EndpointId.AVALANCHE_V2_TESTNET,
-            url: process.env.RPC_URL_FUJI || 'https://rpc.ankr.com/avalanche_fuji',
-            accounts,
+        baseSepolia: {
+            url: 'https://public.stackup.sh/api/v1/node/base-sepolia',
+            chainId: 84532,
+            accounts: [`${PRIVATE_KEY}`],
         },
-        'amoy-testnet': {
-            eid: EndpointId.AMOY_V2_TESTNET,
-            url: process.env.RPC_URL_AMOY || 'https://polygon-amoy-bor-rpc.publicnode.com',
-            accounts,
+        arbitrumSepolia: {
+            url: 'https://endpoints.omniatech.io/v1/arbitrum/sepolia/public',
+            chainId: 421614,
+            accounts: [`${PRIVATE_KEY}`],
         },
         hardhat: {
             // Need this for testing because TestHelperOz5.sol is exceeding the compiled contract size limit
@@ -76,6 +79,39 @@ const config: HardhatUserConfig = {
         deployer: {
             default: 0, // wallet address of index[0], of the mnemonic in .env
         },
+    },
+    etherscan: {
+        apiKey: {
+            sepolia: ETHERSCAN_KEY,
+            baseSepolia: BASESCAN_KEY,
+            arbitrumSepolia: ARBISCAN_KEY,
+        },
+        customChains: [
+            {
+                network: 'sepolia',
+                chainId: 11155111,
+                urls: {
+                    apiURL: 'https://api-sepolia.etherscan.io/api',
+                    browserURL: 'https://sepolia.etherscan.io/',
+                },
+            },
+            {
+                network: 'arbitrumSepolia',
+                chainId: 421614,
+                urls: {
+                    apiURL: 'https://api-sepolia.arbiscan.io/api',
+                    browserURL: 'https://sepolia.arbiscan.io/',
+                },
+            },
+            {
+                network: 'baseSepolia',
+                chainId: 84532,
+                urls: {
+                    apiURL: 'https://api-sepolia.basescan.org/api',
+                    browserURL: 'https://sepolia.basescan.org/',
+                },
+            },
+        ],
     },
 }
 
