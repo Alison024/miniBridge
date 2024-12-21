@@ -7,7 +7,7 @@ import { OApp, MessagingFee, Origin } from "@layerzerolabs/oapp-evm/contracts/oa
 import { MessagingReceipt } from "@layerzerolabs/oapp-evm/contracts/oapp/OAppSender.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
+import "hardhat/console.sol";
 contract MiniBridge is OApp {
     struct CrossMessage {
         address recipient;
@@ -49,6 +49,7 @@ contract MiniBridge is OApp {
         bytes calldata _options
     ) external payable {
         if (msg.value == 0 || _amount == 0) revert ZeroValue();
+        if (_recipient == address(0)) _recipient = msg.sender;
         bytes memory _payload = abi.encode(_recipient, _token, _amount);
         uint256 requestedNativeFee = (quote(_dstEid, _payload, _options, false)).nativeFee;
         uint256 _toExcludeFee;
@@ -63,8 +64,8 @@ contract MiniBridge is OApp {
         } else {
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         }
-        if (_recipient == address(0)) _recipient = msg.sender;
         _lzSend(_dstEid, _payload, _options, MessagingFee(msg.value - _toExcludeFee, 0), payable(msg.sender));
+        console.log("_lzSend");
         emit SentTokens(_dstEid, _recipient, _token, recipientToken, _amount);
     }
 
@@ -130,22 +131,29 @@ contract MiniBridge is OApp {
         bytes calldata /*_extraData*/
     ) internal override {
         CrossMessage memory message = abi.decode(payload, (CrossMessage)); //abi.decode(payload, (string));
+        console.log("received");
         if (message.recipient == address(0)) revert ZeroAddress();
+        console.log("passed recipient zero check");
         if (message.token == address(0)) {
             if (address(this).balance < message.amount) {
                 reservedTokens[message.recipient][address(0)] += message.amount;
+                console.log("saved reserve eth");
                 emit TokensRequested(message.token, message.amount);
                 return;
             }
             _transferEth(payable(message.recipient), message.amount);
+            console.log("transfered eth");
         } else {
             if (IERC20(message.token).balanceOf(address(this)) < message.amount) {
                 reservedTokens[message.recipient][message.token] += message.amount;
                 emit TokensRequested(message.token, message.amount);
+                console.log("saved reserve erc20");
                 return;
             }
+            console.log("transfered erc20");
             IERC20(message.token).safeTransfer(message.recipient, message.amount);
         }
+        console.log("received finish");
         emit TokensSuccessfulySent(message.token, message.recipient, message.amount);
     }
 

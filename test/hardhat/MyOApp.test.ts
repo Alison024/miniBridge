@@ -2,7 +2,6 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { Contract, ContractFactory } from 'ethers'
 import { deployments, ethers } from 'hardhat'
-
 import { Options } from '@layerzerolabs/lz-v2-utilities'
 
 describe('MyOApp Test', function () {
@@ -12,6 +11,7 @@ describe('MyOApp Test', function () {
     // Declaration of variables to be used in the test suite
     let MiniBridge: ContractFactory
     let EndpointV2Mock: ContractFactory
+    let ERC20Factory: ContractFactory
     let ownerA: SignerWithAddress
     let ownerB: SignerWithAddress
     let endpointOwner: SignerWithAddress
@@ -19,12 +19,14 @@ describe('MyOApp Test', function () {
     let miniBridgeB: Contract
     let mockEndpointV2A: Contract
     let mockEndpointV2B: Contract
+    let mockErc1: Contract
+    let mockErc2: Contract
 
     // Before hook for setup that runs once before all tests in the block
     before(async function () {
         // Contract factory for our tested contract
         MiniBridge = await ethers.getContractFactory('MiniBridge')
-
+        ERC20Factory = await ethers.getContractFactory('MockERC20')
         // Fetching the first three signers (accounts) from Hardhat's local Ethereum network
         const signers = await ethers.getSigners()
 
@@ -43,6 +45,9 @@ describe('MyOApp Test', function () {
 
     // beforeEach hook for setup that runs before each test in the block
     beforeEach(async function () {
+        mockErc1 = await ERC20Factory.deploy()
+        mockErc2 = await ERC20Factory.deploy()
+
         // Deploying a mock LZ EndpointV2 with the given Endpoint ID
         mockEndpointV2A = await EndpointV2Mock.deploy(eidA)
         mockEndpointV2B = await EndpointV2Mock.deploy(eidB)
@@ -59,25 +64,39 @@ describe('MyOApp Test', function () {
         await miniBridgeA.connect(ownerA).setPeer(eidB, ethers.utils.zeroPad(miniBridgeB.address, 32))
         await miniBridgeB.connect(ownerB).setPeer(eidA, ethers.utils.zeroPad(miniBridgeA.address, 32))
 
+        await miniBridgeA
+            .connect(ownerA)
+            .setTokenMapping([mockErc1.address, mockErc2.address], [eidB, eidB], [mockErc1.address, mockErc2.address])
+        await miniBridgeB
+            .connect(ownerB)
+            .setTokenMapping([mockErc1.address, mockErc2.address], [eidA, eidA], [mockErc1.address, mockErc2.address])
+
         // await miniBridgeA.
     })
 
     // A test case to verify message sending functionality
     it('should send a message to each destination OApp', async function () {
-        // Assert initial state of data in both MyOApp instances
-        expect(await miniBridgeA.data()).to.equal('Nothing received yet.')
-        expect(await miniBridgeB.data()).to.equal('Nothing received yet.')
+        const tokenToSend = mockErc1.address
+        const recipient = ethers.constants.AddressZero
+        const amount = ethers.utils.parseEther('1')
         const options = Options.newOptions().addExecutorLzReceiveOption(200000, 0).toHex().toString()
 
+        const message = await miniBridgeA
+            .connect(ownerA)
+            .callStatic.generateMessageToSend(recipient, tokenToSend, amount)
+        console.log('options', options)
         // Define native fee and quote for the message send operation
         let nativeFee = 0
-        ;[nativeFee] = await miniBridgeA.quote(eidB, 'Test message.', options, false)
+        ;[nativeFee] = await miniBridgeA.quote(eidB, message, options, false)
 
         // Execute send operation from myOAppA
-        await miniBridgeA.send(eidB, 'Test message.', options, { value: nativeFee.toString() })
+        await mockErc1.approve(miniBridgeA.address, amount)
 
-        // Assert the resulting state of data in both MyOApp instances
-        expect(await miniBridgeA.data()).to.equal('Nothing received yet.')
-        expect(await miniBridgeB.data()).to.equal('Test message.')
+        await miniBridgeA.connect(ownerA).sendTokens(tokenToSend, recipient, amount, eidB, options, {
+            value: nativeFee,
+        })
+        // // Assert the resulting state of data in both MyOApp instances
+        expect((await miniBridgeB.reservedTokens(ownerA.address, tokenToSend)).toString()).to.equal(amount.toString())
+        // expect(await miniBridgeB.data()).to.equal('Test message.')
     })
 })
